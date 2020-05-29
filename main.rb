@@ -1,145 +1,130 @@
-# rubocop: disable Metrics/ModuleLength:
-# rubocop: disable Style/For:
-# rubocop: disable Style/CaseEquality:
+# frozen_string_literal: false
+
 module Enumerable
   def my_each
-    return to_enum(:my_each) unless block_given?
+    return to_enum unless block_given?
 
-    item = 0
-    array = to_a
-    n = array.length
-    while item < n
-      yield(array[item])
-      item += 1
+    x = 0
+    while x < self.length
+      yield(self[x])
+      x += 1
     end
+    self
   end
 
   def my_each_with_index
-    return to_enum(:my_each_with_index) unless block_given?
+    return to_enum unless block_given?
 
-    i = 0
-    for item in self do
-      yield(item, i)
-      i += 1
+    x = 0
+    while x < self.length
+      yield(self[x], x)
+      x += 1
     end
+    self
   end
 
   def my_select
-    return to_enum(:my_select) unless block_given?
+    return to_enum(:my_each) if !block_given?
 
-    new_arr = []
-    for item in self do
-      new_arr.push(item) if yield(item)
+    arr = []
+    x = 0
+    while x < self.length
+      if yield(self[x])
+        arr << self[x]
+      end
+      x += 1
     end
-    new_arr
+    arr
   end
 
-  def my_all?(args = nil)
+  def my_all?(pat = nil)
     result = true
-    my_each do |item|
-      if block_given?
-        result = false unless yield(item)
-      elsif args.nil?
-        result = false unless item
-      else
-        result = false unless args === item
-      end
-    end
-    result
-  end
-
-  def my_any?(args = nil)
-    result = false
-    my_each do |item|
-      if block_given?
-        result = true if yield(item)
-      elsif args.nil?
-        result = true if item
-      elsif args === item
-        result = true
-      end
-    end
-    result
-  end
-
-  def my_none?(args = nil)
-    result = true
-    my_each do |item|
-      if block_given?
-        result = false if yield item
-      elsif args.nil?
-        result = false if item
-      elsif args === item
-        my_each { |_item| result = false }
-      end
-    end
-    result
-  end
-
-  def my_count(args = nil)
-    counter = 0
     if block_given?
-      my_each do |item|
-        counter += 1 if yield(item)
-      end
-    elsif args
-      my_each do |item|
-        counter += 1 if item == args
-      end
+      my_each { |ele| result &= (yield ele) }
+    elsif pat
+      my_each { |ele| result &= pat === ele }
     else
-      my_each do
-        counter += 1
-      end
+      my_each { |ele| result &= ele }
     end
-    counter
+    result
   end
 
-  def my_map(proc = nil)
-    return to_enum(:my_map) if block_given? == false
+  def my_any?(pat = nil)
+    result = false
+    if block_given?
+      my_each { |ele| result = true if yield ele }
+    elsif pat
+      my_each { |ele| result = true if pattern?(ele, pat) }
+    else
+      my_each { |ele| result = true if ele }
+    end
+    result
+  end
+
+  def my_none?(pat = nil)
+    result = true
+    if block_given?
+      my_each { |ele| result = false if yield ele }
+    elsif pat
+      my_each { |ele| result = false if pattern?(ele, pat) }
+    else
+      my_each { |ele| result = false if ele }
+    end
+    result
+  end
+
+  def my_count(arg = nil)
+    count = 0
+    if block_given?
+      my_each { |x| count += 1 if yield(x) }
+    elsif arg
+      my_each { |x| count += 1 if x == arg }
+    else
+      count = length
+    end
+    count
+  end
+
+  def my_map(param = nil)
+    return to_enum unless block_given?
 
     new_arr = []
-    if proc.nil?
-      my_each do |item|
-        new_arr << yield(item)
-      end
-    end
-    if block_given? && proc
-      my_each do |item|
-        new_arr << proc.call(item)
-      end
+    if block_given?
+      my_each { |x| new_arr << yield(x) }
+    else
+      my_each { |x| new_arr << param.call(x) }
     end
     new_arr
   end
 
-  def my_inject(initial_arg = nil, symbol = nil)
-    array = to_a
-    n = array.length
-    if initial_arg.nil?
-      result = array[0]
-      array[1..n - 1].my_each { |item| result = yield(result, item) }
-    elsif block_given?
-      result = initial_arg
-      array.my_each { |item| result = yield(result, item) }
-    elsif initial_arg && symbol
-      result = initial_arg
-      array.my_each { |item| result = result.send(symbol, item) }
-    elsif initial_arg.is_a? Integer
-      result = initial_arg
-      array.my_each { |item| result += item }
-    else
-      result = array[0]
-      array[1..n - 1].my_each { |item| result = result.send(initial_arg, item) }
+  def my_inject(*args)
+    result, sym = inj_param(*args)
+    arr = result ? to_a : to_a[1..-1]
+    result ||= to_a[0]
+    if block_given?
+      arr.my_each { |x| result = yield(result, x) }
+    elsif sym
+      arr.my_each { |x| result = result.public_send(sym, x) }
     end
     result
   end
+
+  def multiply_els
+    my_inject { |x, y| x * y }
+  end
+
+  def pattern?(obj, pat)
+    (obj.respond_to?(:eql?) && obj.eql?(pat)) ||
+      (pat.is_a?(Class) && obj.is_a?(pat)) ||
+      (pat.is_a?(Regexp) && pat.match(obj))
+  end
+
+  def inj_param(*args)
+    result, sym = nil
+    args.my_each do |arg|
+      result = arg if arg.is_a? Numeric
+      sym = arg unless arg.is_a? Numeric
+    end
+    [result, sym]
+  end
 end
-
-def multiply_els(arr)
-  arr.my_inject { |product, item| product * item }
-end
-
-p multiply_els([2, 4, 5])
-
-# rubocop: enable Metrics/ModuleLength:
-# rubocop: enable Style/For:
-# rubocop: enable Style/CaseEquality:
